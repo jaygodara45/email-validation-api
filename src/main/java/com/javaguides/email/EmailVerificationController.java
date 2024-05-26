@@ -1,18 +1,19 @@
 package com.javaguides.email;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import javax.naming.NamingEnumeration;
-
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.naming.Context;
+import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.InitialDirContext;
-import javax.naming.directory.Attributes;
-import javax.naming.directory.Attribute;
 import java.util.Hashtable;
 import java.util.regex.Pattern;
 
@@ -20,22 +21,37 @@ import java.util.regex.Pattern;
 public class EmailVerificationController {
 
     @GetMapping("/verifyEmailDomain")
-    public String verifyEmailDomain(@RequestParam String email) {
+    public ResponseEntity<EmailVerificationResponse> verifyEmailDomain(@RequestParam String email) {
+        EmailVerificationResponse response = new EmailVerificationResponse();
+
         if (isValidEmailAddress(email)) {
             String domain = getDomainFromEmail(email);
             if (domain != null && !domain.isEmpty()) {
-                if (isDomainFormatValid(domain) && isDomainMXValid(domain)!="false" && !"0 .".equals(isDomainMXValid(domain))) {
-                    return "Valid email domain: " + domain + " "+isDomainMXValid(domain);
-                } else if (isDomainMXValid(domain)=="false") {
-                    return "Invalid email domain MX invalid: " + domain + " "+ isDomainMXValid(domain);
+                if (isDomainFormatValid(domain)) {
+                    String mxValidation = isDomainMXValid(domain);
+                    if (!"false".equals(mxValidation) && !"0 .".equals(mxValidation)) {
+                        response.setStatus("valid");
+                        response.setData(isDomainMXValid(domain));
+                        return new ResponseEntity<>(response, HttpStatus.OK);
+                    } else {
+                        response.setStatus("invalid");
+                        response.setData("Invalid MX records");
+                        return new ResponseEntity<>(response, HttpStatus.OK);
+                    }
                 } else {
-                    return "Invalid email domain regex invalid: " + domain+ " "+isDomainMXValid(domain);
+                    response.setStatus("invalid");
+                    response.setData("Invalid domain format");
+                    return new ResponseEntity<>(response, HttpStatus.OK);
                 }
             } else {
-                return "Invalid email domain extraction.";
+                response.setStatus("invalid");
+                response.setData("Invalid domain extraction");
+                return new ResponseEntity<>(response, HttpStatus.OK);
             }
         } else {
-            return "Invalid email address.";
+            response.setStatus("invalid");
+            response.setData("Invalid email address");
+            return new ResponseEntity<>(response, HttpStatus.OK);
         }
     }
 
@@ -58,7 +74,6 @@ public class EmailVerificationController {
     }
 
     private boolean isDomainFormatValid(String domain) {
-
         String domainRegex = "^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\\.[A-Za-z0-9-]{1,63}(?<!-))*\\.[A-Za-z]{2,}$";
         Pattern pattern = Pattern.compile(domainRegex);
         return pattern.matcher(domain).matches();
@@ -71,20 +86,40 @@ public class EmailVerificationController {
             DirContext ctx = new InitialDirContext(env);
             Attributes attrs = ctx.getAttributes("dns:/" + domain, new String[]{"MX"});
             Attribute attr = attrs.get("MX");
-            if (attr != null && attr.size() > 0){
+            if (attr != null && attr.size() > 0) {
                 StringBuilder result = new StringBuilder();
                 NamingEnumeration<?> enumeration = attr.getAll();
                 while (enumeration.hasMore()) {
                     String mx = (String) enumeration.next();
-                    result.append(mx);
+                    result.append(mx).append(" ");
                 }
-                return result.toString();
-            }
-            else{
+                return result.toString().trim();
+            } else {
                 return "false";
             }
         } catch (NamingException e) {
             return "false";
+        }
+    }
+
+    public static class EmailVerificationResponse {
+        private String status;
+        private String data;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public String getData() {
+            return data;
+        }
+
+        public void setData(String data) {
+            this.data = data;
         }
     }
 }
