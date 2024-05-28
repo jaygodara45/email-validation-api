@@ -1,1 +1,1 @@
-Email valdiation API
+Email validation API
